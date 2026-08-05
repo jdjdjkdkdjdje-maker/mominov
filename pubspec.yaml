@@ -1,73 +1,78 @@
-name: uzum_tezkor_customer
-description: "Uzum Tezkor darajasidagi ovqat yetkazib berish — mijoz mobil ilovasi"
-publish_to: "none"
-version: 1.0.0+1
+name: Build APK
 
-environment:
-  sdk: ">=3.3.0 <4.0.0"
+on:
+  push:
+    branches: [ main ]
+  workflow_dispatch:
 
-dependencies:
-  flutter:
-    sdk: flutter
-  flutter_localizations:
-    sdk: flutter
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
 
-  # State management
-  flutter_riverpod: ^2.5.1
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.32.0'
+          channel: 'stable'
 
-  # Navigation
-  go_router: ^14.2.0
+      # android/ papkada ba'zi fayllar yo'q bo'lsa, shu yerda to'ldiriladi.
+      # Mavjud fayllar (masalan bizning maxsus AndroidManifest.xml'imiz) ustidan yozilmaydi.
+      - name: Fill in missing android project files
+        run: flutter create --platforms=android .
 
-  # Networking
-  dio: ^5.4.3+1
-  socket_io_client: ^2.0.3+1
-  pretty_dio_logger: ^1.3.1
+      # geocoding, google_maps_flutter, androidx.* kutubxonalari compileSdk >= 34 talab qiladi.
+      # Ko'plab plagin NDK 27.0.12077973 talab qiladi.
+      - name: Fix compileSdk / targetSdk / minSdk / ndkVersion
+        run: |
+          set -e
+          if [ -f android/app/build.gradle.kts ]; then
+            FILE=android/app/build.gradle.kts
+            sed -i -E 's/compileSdk\s*=\s*flutter\.compileSdkVersion/compileSdk = 36/' "$FILE"
+            sed -i -E 's/targetSdk\s*=\s*flutter\.targetSdkVersion/targetSdk = 34/' "$FILE"
+            sed -i -E 's/minSdk\s*=\s*flutter\.minSdkVersion/minSdk = 23/' "$FILE"
+            sed -i -E 's/ndkVersion\s*=\s*flutter\.ndkVersion/ndkVersion = "27.0.12077973"/' "$FILE"
+          fi
+          if [ -f android/app/build.gradle ]; then
+            FILE=android/app/build.gradle
+            sed -i -E 's/compileSdkVersion\s+flutter\.compileSdkVersion/compileSdkVersion 36/' "$FILE"
+            sed -i -E 's/targetSdkVersion\s+flutter\.targetSdkVersion/targetSdkVersion 34/' "$FILE"
+            sed -i -E 's/minSdkVersion\s+flutter\.minSdkVersion/minSdkVersion 23/' "$FILE"
+            sed -i -E 's/ndkVersion\s+flutter\.ndkVersion/ndkVersion "27.0.12077973"/' "$FILE"
+          fi
+          echo "----- Natija -----"
+          grep -n -i "sdk\|ndk" android/app/build.gradle* || true
 
-  # Auth
-  google_sign_in: ^6.2.1
-  sign_in_with_apple: ^6.1.1
-  flutter_secure_storage: ^9.2.2
+      # AndroidManifest.xml ichida ${GOOGLE_MAPS_API_KEY} placeholder bor.
+      # Uni GitHub Secrets'dagi qiymat bilan almashtirish uchun manifestPlaceholders qo'shamiz.
+      - name: Inject Google Maps API key placeholder
+        run: |
+          set -e
+          if [ -f android/app/build.gradle.kts ]; then
+            FILE=android/app/build.gradle.kts
+            if ! grep -q "manifestPlaceholders" "$FILE"; then
+              sed -i -E '/defaultConfig\s*\{/a\        manifestPlaceholders["GOOGLE_MAPS_API_KEY"] = System.getenv("GOOGLE_MAPS_API_KEY") ?: ""' "$FILE"
+            fi
+          fi
+          if [ -f android/app/build.gradle ]; then
+            FILE=android/app/build.gradle
+            if ! grep -q "manifestPlaceholders" "$FILE"; then
+              sed -i -E '/defaultConfig\s*\{/a\        manifestPlaceholders = [GOOGLE_MAPS_API_KEY: System.getenv("GOOGLE_MAPS_API_KEY") ?: ""]' "$FILE"
+            fi
+          fi
+        env:
+          GOOGLE_MAPS_API_KEY: ${{ secrets.GOOGLE_MAPS_API_KEY }}
 
-  # Maps & location
-  google_maps_flutter: ^2.7.0
-  geolocator: ^12.0.0
-  geocoding: ^3.0.0
+      - name: Get dependencies
+        run: flutter pub get
 
-  # UI
-  cached_network_image: ^3.3.1
-  shimmer: ^3.0.0
-  carousel_slider: ^4.2.1
-  flutter_svg: ^2.0.10+1
-  lottie: ^3.1.2
-  pin_code_fields: ^8.0.1
-  badges: ^3.1.2
-  flutter_rating_bar: ^4.0.1
-  smooth_page_indicator: ^1.1.0
+      - name: Build APK
+        run: flutter build apk --release
+        env:
+          GOOGLE_MAPS_API_KEY: ${{ secrets.GOOGLE_MAPS_API_KEY }}
 
-  # Utils
-  intl: ^0.20.2
-  equatable: ^2.0.5
-  freezed_annotation: ^2.4.1
-  json_annotation: ^4.9.0
-  shared_preferences: ^2.2.3
-  url_launcher: ^6.3.0
-  connectivity_plus: ^6.0.3
-  permission_handler: ^11.3.1
-  firebase_core: ^3.1.0
-  firebase_messaging: ^15.0.1
-  device_info_plus: ^10.1.0
-
-dev_dependencies:
-  flutter_test:
-    sdk: flutter
-  flutter_lints: ^4.0.0
-  build_runner: ^2.4.11
-  freezed: ^2.5.5
-  json_serializable: ^6.8.0
-
-flutter:
-  uses-material-design: true
-
-  assets:
-    - assets/images/
-    - assets/icons/
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: uzum-tezkor-apk
+          path: build/app/outputs/flutter-apk/app-release.apk
