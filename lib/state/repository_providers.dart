@@ -1,0 +1,23 @@
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../data/repositories/address_repository.dart';
+import '../data/repositories/auth_repository.dart';
+import '../data/repositories/catalog_repository.dart';
+import '../data/repositories/misc_repositories.dart';
+import '../data/repositories/order_repository.dart';
+import '../data/repositories/payment_repository.dart';
+import '../data/repositories/restaurant_repository.dart';
+import '../data/repositories/review_repository.dart';
+import '../data/repositories/user_repository.dart';
+
+final authRepositoryProvider = Provider((ref) => AuthRepository());
+final userRepositoryProvider = Provider((ref) => UserRepository());
+final addressRepositoryProvider = Provider((ref) => AddressRepository());
+final restaurantRepositoryProvider = Provider((ref) => RestaurantRepository());
+final catalogRepositoryProvider = Provider((ref) => CatalogRepository());
+final orderRepositoryProvider = Provider((ref) => OrderRepository());
+final paymentRepositoryProvider = Provider((ref) => PaymentRepository());
+final reviewRepositoryProvider = Provider((ref) => ReviewRepository());
+final bannerRepositoryProvider = Provider((ref) => BannerRepository());
+final promoCodeRepositoryProvider = Provider((ref) => PromoCodeRepository());
+final bonusRepositoryProvider = Provider((ref) => BonusRepository());
+final notificationRepositoryProvider = Provider((ref) => NotificationRepository());
