@@ -1,0 +1,75 @@
+name: Build APK
+
+on:
+  push:
+    branches: [ main ]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.32.0'
+          channel: 'stable'
+
+      # android/ papkada faqat AndroidManifest.xml bor, build.gradle/gradle wrapper/
+      # MainActivity/res kabi fayllar yo'q. flutter create mavjud fayllarni
+      # (masalan bizning maxsus AndroidManifest.xml'imizni) ustidan yozmasdan,
+      # yetishmayotgan fayllarni to'ldirib beradi.
+      - name: Fill in missing android project files
+        run: flutter create --platforms=android .
+
+      # geocoding, google_maps_flutter, androidx.* kutubxonalari compileSdk >= 34 talab qiladi
+      - name: Fix compileSdk / targetSdk / minSdk
+        run: |
+          set -e
+          if [ -f android/app/build.gradle.kts ]; then
+            FILE=android/app/build.gradle.kts
+            sed -i -E 's/compileSdk\s*=\s*flutter\.compileSdkVersion/compileSdk = 36/' "$FILE"
+            sed -i -E 's/targetSdk\s*=\s*flutter\.targetSdkVersion/targetSdk = 34/' "$FILE"
+            sed -i -E 's/minSdk\s*=\s*flutter\.minSdkVersion/minSdk = 23/' "$FILE"
+          fi
+          if [ -f android/app/build.gradle ]; then
+            FILE=android/app/build.gradle
+            sed -i -E 's/compileSdkVersion\s+flutter\.compileSdkVersion/compileSdkVersion 36/' "$FILE"
+            sed -i -E 's/targetSdkVersion\s+flutter\.targetSdkVersion/targetSdkVersion 34/' "$FILE"
+            sed -i -E 's/minSdkVersion\s+flutter\.minSdkVersion/minSdkVersion 23/' "$FILE"
+          fi
+          echo "----- Natija -----"
+          grep -n -i "sdk" android/app/build.gradle* || true
+
+      - name: Inject Google Maps API key placeholder
+        run: |
+          set -e
+          if [ -f android/app/build.gradle.kts ]; then
+            FILE=android/app/build.gradle.kts
+            if ! grep -q "manifestPlaceholders" "$FILE"; then
+              sed -i -E '/defaultConfig\s*\{/a\        manifestPlaceholders["GOOGLE_MAPS_API_KEY"] = System.getenv("GOOGLE_MAPS_API_KEY") ?: ""' "$FILE"
+            fi
+          fi
+          if [ -f android/app/build.gradle ]; then
+            FILE=android/app/build.gradle
+            if ! grep -q "manifestPlaceholders" "$FILE"; then
+              sed -i -E '/defaultConfig\s*\{/a\        manifestPlaceholders = [GOOGLE_MAPS_API_KEY: System.getenv("GOOGLE_MAPS_API_KEY") ?: ""]' "$FILE"
+            fi
+          fi
+        env:
+          GOOGLE_MAPS_API_KEY: ${{ secrets.GOOGLE_MAPS_API_KEY }}
+
+      - name: Get dependencies
+        run: flutter pub get
+
+      - name: Build APK
+        run: flutter build apk --release
+        env:
+          GOOGLE_MAPS_API_KEY: ${{ secrets.GOOGLE_MAPS_API_KEY }}
+
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: uzum-tezkor-apk
+          path: build/app/outputs/flutter-apk/app-release.apk
